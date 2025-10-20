@@ -188,6 +188,29 @@ def status():
         "url": "Railway deployment ready"
     })
 
+@app.route('/test-telegram')
+def test_telegram():
+    try:
+        test_message = (f"🧪 Test del sistema de monitoreo\n"
+                       f"✅ Sistema funcionando correctamente\n"
+                       f"📊 Planes monitoreados: {', '.join(PLANES)}\n"
+                       f"🕐 Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                       f"🔗 URL: trackvuelosprivados-production.up.railway.app")
+
+        notify_telegram(test_message)
+
+        return jsonify({
+            "status": "success",
+            "message": "Test message sent to Telegram",
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
 if __name__ == '__main__':
     # Iniciar el monitor en un hilo separado
     monitor_thread = threading.Thread(target=monitor_flights, daemon=True)
