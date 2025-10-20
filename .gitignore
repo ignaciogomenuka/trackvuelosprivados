@@ -36,4 +36,7 @@ ENV/
 
 # OS
 .DS_Store
-Thumbs.dbvenv/
+Thumbs.db
+
+# Virtual environment (already specified above but adding here for clarity)
+venv/
