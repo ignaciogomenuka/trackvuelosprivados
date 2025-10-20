@@ -181,9 +181,11 @@ def api_check():
 def status():
     return jsonify({
         "status": "running",
+        "service": "Flight Monitor v1.0",
         "planes_monitoreados": PLANES,
         "planes_activos": list(active_planes),
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "url": "Railway deployment ready"
     })
 
 if __name__ == '__main__':
