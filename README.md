@@ -1,6 +1,6 @@
 # Monitor de Vuelos Privados
 
-Script en Python que monitorea en tiempo real si alguno de tus aviones registrados está volando y envía alertas por consola y opcionalmente por Telegram.
+Aplicación web que monitorea en tiempo real si alguno de tus aviones registrados está volando y envía alertas por Telegram.
 
 ## Matrículas monitoreadas
 - LV-FVZ
@@ -8,32 +8,44 @@ Script en Python que monitorea en tiempo real si alguno de tus aviones registrad
 - LV-KMA
 - LV-CCO
 
-## Instalación
+## Deployment en Railway
 
-1. Crear entorno virtual e instalar dependencias:
+### Variables de entorno requeridas:
+```
+TELEGRAM_TOKEN=tu_token_aqui
+TELEGRAM_CHAT_ID=tu_chat_id_aqui
+```
+
+### Deploy automático:
+1. Conecta este repo a Railway
+2. Configura las variables de entorno
+3. Deploy automático - Railway detectará Flask y usará gunicorn
+
+## Uso local
+
+1. Instalar dependencias:
 ```bash
-python3 -m venv venv
-source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-2. Configurar variables de entorno (opcional para Telegram):
+2. Configurar variables de entorno:
 ```bash
 cp .env.example .env
 # Editar .env con tu TELEGRAM_TOKEN y TELEGRAM_CHAT_ID
 ```
 
-## Uso
-
+3. Ejecutar:
 ```bash
-source venv/bin/activate
-python monitor_vuelos.py
+python app.py
 ```
 
-El script:
-- Consulta la API de OpenSky Network cada 5 minutos
-- Detecta cuando un avión entra o sale del radar
-- Muestra información de altitud, velocidad y posición
-- Envía notificaciones por Telegram si está configurado
+## Funcionalidades
 
-Presiona `Ctrl+C` para detener el monitoreo.
+- ✅ Monitoreo automático cada 5 minutos en background
+- ✅ Alertas por Telegram cuando aviones entran/salen del radar
+- ✅ Interface web en `/` para verificación manual
+- ✅ API REST en `/api/check`
+- ✅ Health check en `/status`
+- ✅ Deploy listo para Railway/Heroku
+
+El sistema funciona 24/7 automáticamente una vez deployado.
