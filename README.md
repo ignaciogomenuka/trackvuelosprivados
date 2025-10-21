@@ -8,6 +8,7 @@ Aplicación web que monitorea en tiempo real si alguno de tus aviones registrado
 - LV-KMA
 - LV-CCO
 - LV-KAX
+- LV-KFB (test provisorio)
 
 ## Deployment en Railway
 
