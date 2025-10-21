@@ -8,7 +8,6 @@ Aplicación web que monitorea en tiempo real si alguno de tus aviones registrado
 - LV-KMA
 - LV-CCO
 - LV-KAX
-- LV-KFB (test provisorio)
 
 ## Deployment en Railway
 
@@ -54,6 +53,11 @@ python app.py
   - 📍 Aeropuerto más cercano (distancia)
   - ⏱️ ETA aproximado al aeropuerto cercano
   - 📊 Altitud, velocidad, posición
+  - 🧭 Rumbo con dirección cardinal (N/S/E/W)
+  - ⬆️⬇️ Velocidad vertical (subiendo/descendiendo/estable)
+  - 🎯 Dirección estimada (hacia qué aeropuerto se dirige)
+  - 🔗 Link directo a FlightRadar24
+  - 🆘 Alertas de emergencia (squawk 7700/7600/7500)
 - ✅ Persistencia de estado (sobrevive reinicios)
 - ✅ Interface web en `/` para verificación manual
 - ✅ API REST en `/api/check`

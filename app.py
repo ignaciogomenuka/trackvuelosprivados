@@ -17,7 +17,6 @@ PLANES = {
     "e06546": "LV-FUF",
     "e0b341": "LV-KMA",
     "e0b058": "LV-KAX",
-    "e0b182": "LV-KFB",
 }
 
 active_planes = set()
@@ -93,6 +92,60 @@ def calculate_eta(distance_km, speed_kmh):
         return f"{minutes} min"
     return "N/A"
 
+def get_cardinal_direction(heading):
+    if heading == "N/A":
+        return ""
+    directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
+    idx = int((heading + 22.5) / 45) % 8
+    return directions[idx]
+
+def get_vertical_status(baro_rate):
+    if baro_rate == "N/A":
+        return ""
+    if baro_rate > 64:
+        return f"⬆️ Subiendo +{baro_rate} ft/min"
+    elif baro_rate < -64:
+        return f"⬇️ Descendiendo {baro_rate} ft/min"
+    else:
+        return "➡️ Altitud estable"
+
+def check_emergency(squawk):
+    if squawk == "7700":
+        return "🆘 EMERGENCIA"
+    elif squawk == "7600":
+        return "📻 Falla de radio"
+    elif squawk == "7500":
+        return "🚨 HIJACK"
+    return None
+
+def calculate_heading_to_airport(lat, lon, airport_lat, airport_lon):
+    from math import atan2, degrees, radians, cos, sin
+    lat1, lon1, lat2, lon2 = map(radians, [lat, lon, airport_lat, airport_lon])
+    dlon = lon2 - lon1
+    x = sin(dlon) * cos(lat2)
+    y = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dlon)
+    bearing = degrees(atan2(x, y))
+    return (bearing + 360) % 360
+
+def find_destination_airport(lat, lon, heading):
+    if lat == "N/A" or lon == "N/A" or heading == "N/A":
+        return None
+
+    min_angle_diff = float('inf')
+    destination = None
+
+    for code, airport in ARGENTINA_AIRPORTS.items():
+        bearing = calculate_heading_to_airport(lat, lon, airport['lat'], airport['lon'])
+        angle_diff = abs(((bearing - heading + 180) % 360) - 180)
+
+        if angle_diff < 45 and angle_diff < min_angle_diff:
+            distance = calculate_distance(lat, lon, airport['lat'], airport['lon'])
+            if distance > 5:
+                min_angle_diff = angle_diff
+                destination = {"code": code, "name": airport['name'], "distance": round(distance, 1)}
+
+    return destination
+
 def save_flight_event(callsign, event_type, data=None):
     history = load_history()
     event = {
@@ -137,6 +190,9 @@ def check_adsb_one(icao24):
                     "country": "N/A",
                     "lat": aircraft.get("lat", "N/A"),
                     "lon": aircraft.get("lon", "N/A"),
+                    "heading": aircraft.get("track", "N/A"),
+                    "baro_rate": aircraft.get("baro_rate", "N/A"),
+                    "squawk": aircraft.get("squawk", ""),
                     "source": "ADSB.one"
                 }
     except Exception as e:
@@ -154,6 +210,9 @@ def check_opensky():
                     continue
                 icao24 = state[0].lower() if state[0] else None
                 if icao24 in PLANES:
+                    vertical_ms = state[11] if state[11] is not None else None
+                    baro_rate_fpm = round(vertical_ms * 196.85) if vertical_ms else "N/A"
+
                     results[icao24] = {
                         "icao24": icao24,
                         "callsign": state[1].strip() if state[1] else "",
@@ -162,6 +221,9 @@ def check_opensky():
                         "country": state[2] if state[2] else "N/A",
                         "lat": state[6] if state[6] is not None else "N/A",
                         "lon": state[5] if state[5] is not None else "N/A",
+                        "heading": state[10] if state[10] is not None else "N/A",
+                        "baro_rate": baro_rate_fpm,
+                        "squawk": "",
                         "source": "OpenSky"
                     }
     except Exception as e:
@@ -201,6 +263,7 @@ def check_flights():
             velocity_unit = "km/h"
 
             nearest = find_nearest_airport(plane_data['lat'], plane_data['lon'])
+            destination = find_destination_airport(plane_data['lat'], plane_data['lon'], plane_data.get('heading', 'N/A'))
 
             is_in_progress = registration in notified_planes
             event_icon = "🔄" if is_in_progress else "✈️"
@@ -208,17 +271,35 @@ def check_flights():
 
             msg = f"{event_icon} {registration} {event_type}\n"
             msg += f"ICAO24: {icao24}\n"
-            msg += f"Altitud: {plane_data['altitude']} {altitude_unit}\n"
-            msg += f"Velocidad: {plane_data['velocity']} {velocity_unit}\n"
+
+            emergency = check_emergency(plane_data.get('squawk', ''))
+            if emergency:
+                msg += f"{emergency}\n"
+
+            msg += f"\n📊 Altitud: {plane_data['altitude']} {altitude_unit}\n"
+            msg += f"🚀 Velocidad: {plane_data['velocity']} {velocity_unit}\n"
+
+            heading = plane_data.get('heading', 'N/A')
+            if heading != "N/A":
+                cardinal = get_cardinal_direction(heading)
+                msg += f"🧭 Rumbo: {int(heading)}° ({cardinal})\n"
+
+            vertical = get_vertical_status(plane_data.get('baro_rate', 'N/A'))
+            if vertical:
+                msg += f"{vertical}\n"
 
             if nearest:
                 msg += f"\n📍 Aeropuerto más cercano: {nearest['name']} ({nearest['code']})\n"
-                msg += f"Distancia: {nearest['distance']} km\n"
+                msg += f"📏 Distancia: {nearest['distance']} km\n"
 
                 eta = calculate_eta(nearest['distance'], plane_data['velocity'])
                 if eta != "N/A":
                     msg += f"⏱️ ETA aproximado: {eta}\n"
 
+            if destination and destination['name'] != (nearest['name'] if nearest else None):
+                msg += f"🎯 Dirección estimada: Hacia {destination['name']} ({destination['distance']} km)\n"
+
+            msg += f"\n🔗 Ver en vivo: https://www.flightradar24.com/{icao24}\n"
             msg += f"\n📡 Fuente: {plane_data['source']}\n"
             msg += f"🕐 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
@@ -285,7 +366,7 @@ def index():
 </head>
 <body>
     <h1>🛩️ Monitor de Vuelos Privados</h1>
-    <p>Monitoreo en tiempo real de las matrículas: LV-FVZ, LV-CCO, LV-FUF, LV-KMA, LV-KAX, LV-KFB</p>
+    <p>Monitoreo en tiempo real de las matrículas: LV-FVZ, LV-CCO, LV-FUF, LV-KMA, LV-KAX</p>
     <p style="font-size: 0.85em; color: #666;">Multi-fuente: ADSB.one + OpenSky Network | Detección vía ICAO24 Mode-S</p>
 
     <div>
