@@ -299,7 +299,7 @@ def check_flights():
             if destination and destination['name'] != (nearest['name'] if nearest else None):
                 msg += f"🎯 Dirección estimada: Hacia {destination['name']} ({destination['distance']} km)\n"
 
-            msg += f"\n🔗 Ver en vivo: https://www.flightradar24.com/{icao24}\n"
+            msg += f"\n🔗 Ver en vivo: https://www.flightradar24.com/{registration}\n"
             msg += f"\n📡 Fuente: {plane_data['source']}\n"
             msg += f"🕐 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
