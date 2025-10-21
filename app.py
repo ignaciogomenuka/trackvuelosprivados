@@ -11,7 +11,16 @@ load_dotenv()
 
 app = Flask(__name__)
 
-PLANES = ["LVFVZ", "LVFUF", "LVKMA", "LVCCO"]
+PLANES = {
+    "e0659a": "LV-FVZ",
+    "e030cf": "LV-CCO",
+    # TODO: Agregar códigos ICAO24 de LV-FUF y LV-KMA
+    # Para obtenerlos:
+    # 1. Buscar en https://www.flightradar24.com/data/aircraft/lv-xxx
+    # 2. O verificar en https://opensky-network.org cuando estén volando
+    # 3. El código ICAO24 es el Mode-S transponder hex code
+}
+
 active_planes = set()
 HISTORY_FILE = "flight_history.json"
 
@@ -66,10 +75,12 @@ def check_flights():
             if len(state) < 14:
                 continue
 
-            callsign = state[1].strip().upper() if state[1] else None
+            icao24 = state[0].lower() if state[0] else None
+            callsign = state[1].strip() if state[1] else None
 
-            if callsign in PLANES:
-                currently_flying.add(callsign)
+            if icao24 in PLANES:
+                registration = PLANES[icao24]
+                currently_flying.add(registration)
 
                 altitude = state[13] if state[13] is not None else "N/A"
                 velocity = round(state[9] * 3.6, 1) if state[9] is not None else "N/A"
@@ -78,7 +89,8 @@ def check_flights():
                 country = state[2] if state[2] else "N/A"
 
                 planes_info.append({
-                    "callsign": callsign,
+                    "callsign": registration,
+                    "icao24": icao24,
                     "altitude": altitude,
                     "velocity": velocity,
                     "country": country,
@@ -86,15 +98,19 @@ def check_flights():
                     "lon": lon
                 })
 
-                if callsign not in active_planes:
-                    msg = (f"✈️ {callsign} está en vuelo\n"
+                if registration not in active_planes:
+                    msg = (f"✈️ {registration} está en vuelo\n"
+                           f"Callsign: {callsign}\n"
+                           f"ICAO24: {icao24}\n"
                            f"Altitud: {altitude} m\n"
                            f"Velocidad: {velocity} km/h\n"
                            f"País: {country}\n"
                            f"Posición: lat={lat}, lon={lon}\n"
                            f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                     notify_telegram(msg)
-                    save_flight_event(callsign, "takeoff", {
+                    save_flight_event(registration, "takeoff", {
+                        "icao24": icao24,
+                        "callsign": callsign,
                         "altitude": altitude,
                         "velocity": velocity,
                         "country": country,
@@ -152,7 +168,8 @@ def index():
 </head>
 <body>
     <h1>🛩️ Monitor de Vuelos Privados</h1>
-    <p>Monitoreo en tiempo real de las matrículas: LV-FVZ, LV-FUF, LV-KMA, LV-CCO</p>
+    <p>Monitoreo en tiempo real de las matrículas: LV-FVZ, LV-CCO</p>
+    <p style="font-size: 0.85em; color: #666;">Usando códigos ICAO24 Mode-S para detección precisa</p>
 
     <div>
         <button onclick="checkFlights()">🔄 Verificar Vuelos</button>
@@ -294,11 +311,12 @@ def api_check():
 def status():
     return jsonify({
         "status": "running",
-        "service": "Flight Monitor v1.0",
+        "service": "Flight Monitor v2.0 - ICAO24 Mode",
         "planes_monitoreados": PLANES,
         "planes_activos": list(active_planes),
         "timestamp": datetime.now().isoformat(),
-        "url": "Railway deployment ready"
+        "url": "Railway deployment ready",
+        "note": "Using ICAO24 Mode-S codes for accurate tracking"
     })
 
 @app.route('/api/history')
