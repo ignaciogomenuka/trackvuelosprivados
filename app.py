@@ -14,11 +14,8 @@ app = Flask(__name__)
 PLANES = {
     "e0659a": "LV-FVZ",
     "e030cf": "LV-CCO",
-    # TODO: Agregar códigos ICAO24 de LV-FUF y LV-KMA
-    # Para obtenerlos:
-    # 1. Buscar en https://www.flightradar24.com/data/aircraft/lv-xxx
-    # 2. O verificar en https://opensky-network.org cuando estén volando
-    # 3. El código ICAO24 es el Mode-S transponder hex code
+    "e06546": "LV-FUF",
+    "e0b341": "LV-KMA",
 }
 
 active_planes = set()
@@ -168,7 +165,7 @@ def index():
 </head>
 <body>
     <h1>🛩️ Monitor de Vuelos Privados</h1>
-    <p>Monitoreo en tiempo real de las matrículas: LV-FVZ, LV-CCO</p>
+    <p>Monitoreo en tiempo real de las matrículas: LV-FVZ, LV-CCO, LV-FUF, LV-KMA</p>
     <p style="font-size: 0.85em; color: #666;">Usando códigos ICAO24 Mode-S para detección precisa</p>
 
     <div>
