@@ -3,6 +3,7 @@ import requests
 import os
 import threading
 import time
+import json
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -12,6 +13,33 @@ app = Flask(__name__)
 
 PLANES = ["LVFVZ", "LVFUF", "LVKMA", "LVCCO"]
 active_planes = set()
+HISTORY_FILE = "flight_history.json"
+
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_flight_event(callsign, event_type, data=None):
+    history = load_history()
+    event = {
+        "callsign": callsign,
+        "type": event_type,
+        "timestamp": datetime.now().isoformat(),
+        "data": data or {}
+    }
+    history.insert(0, event)
+    history = history[:100]
+
+    try:
+        with open(HISTORY_FILE, 'w') as f:
+            json.dump(history, f, indent=2)
+    except Exception as e:
+        print(f"Error guardando historial: {e}")
 
 def notify_telegram(msg):
     token = os.getenv("TELEGRAM_TOKEN")
@@ -66,11 +94,19 @@ def check_flights():
                            f"Posición: lat={lat}, lon={lon}\n"
                            f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                     notify_telegram(msg)
+                    save_flight_event(callsign, "takeoff", {
+                        "altitude": altitude,
+                        "velocity": velocity,
+                        "country": country,
+                        "lat": lat,
+                        "lon": lon
+                    })
 
         for plane in active_planes - currently_flying:
             msg = (f"🛬 {plane} ya no está en vuelo\n"
                    f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             notify_telegram(msg)
+            save_flight_event(plane, "landing")
 
         active_planes = currently_flying
 
@@ -97,23 +133,40 @@ def index():
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Monitor de Vuelos Privados</title>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
         .plane { background: #f0f0f0; padding: 15px; margin: 10px 0; border-radius: 8px; }
         .flying { background: #e7f5e7; border-left: 4px solid #28a745; }
         .status { font-weight: bold; color: #28a745; }
-        button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px; }
         button:hover { background: #0056b3; }
         .timestamp { color: #666; font-size: 0.9em; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background: #007bff; color: white; font-weight: bold; }
+        tr:hover { background: #f5f5f5; }
+        .takeoff { color: #28a745; font-weight: bold; }
+        .landing { color: #dc3545; font-weight: bold; }
+        .section { margin: 30px 0; }
+        h2 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
     </style>
 </head>
 <body>
     <h1>🛩️ Monitor de Vuelos Privados</h1>
     <p>Monitoreo en tiempo real de las matrículas: LV-FVZ, LV-FUF, LV-KMA, LV-CCO</p>
 
-    <button onclick="checkFlights()">🔄 Verificar Vuelos</button>
+    <div>
+        <button onclick="checkFlights()">🔄 Verificar Vuelos</button>
+        <button onclick="loadHistory()">📋 Ver Historial</button>
+    </div>
 
     <div id="status"></div>
-    <div id="results"></div>
+
+    <div class="section" id="results"></div>
+
+    <div class="section" id="history-section" style="display: none;">
+        <h2>📊 Historial de Vuelos</h2>
+        <div id="history"></div>
+    </div>
 
     <script>
         async function checkFlights() {
@@ -130,7 +183,7 @@ def index():
                 const resultsDiv = document.getElementById('results');
 
                 if (data.planes_en_vuelo > 0) {
-                    let html = `<h3>✈️ Aviones en vuelo (${data.planes_en_vuelo})</h3>`;
+                    let html = `<h2>✈️ Aviones en vuelo (${data.planes_en_vuelo})</h2>`;
                     data.aviones.forEach(plane => {
                         html += `
                             <div class="plane flying">
@@ -143,6 +196,7 @@ def index():
                     resultsDiv.innerHTML = html;
                 } else {
                     resultsDiv.innerHTML = `
+                        <h2>Estado Actual</h2>
                         <div class="plane">
                             <div class="status">🔴 Ningún avión en vuelo</div>
                             <p>No se detectaron vuelos activos para las matrículas monitoreadas.</p>
@@ -159,7 +213,66 @@ def index():
             }
         }
 
+        async function loadHistory() {
+            const historySection = document.getElementById('history-section');
+            historySection.style.display = 'block';
+            document.getElementById('history').innerHTML = '<p>⏳ Cargando historial...</p>';
+
+            try {
+                const response = await fetch('/api/history');
+                const data = await response.json();
+
+                if (data.total === 0) {
+                    document.getElementById('history').innerHTML = '<p>No hay eventos registrados aún.</p>';
+                    return;
+                }
+
+                let html = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Matrícula</th>
+                                <th>Evento</th>
+                                <th>Fecha y Hora</th>
+                                <th>Detalles</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                data.events.forEach(event => {
+                    const date = new Date(event.timestamp);
+                    const formattedDate = date.toLocaleString('es-AR');
+                    const eventType = event.type === 'takeoff' ? '✈️ Despegue' : '🛬 Aterrizaje';
+                    const eventClass = event.type === 'takeoff' ? 'takeoff' : 'landing';
+
+                    let details = '';
+                    if (event.data && event.data.altitude) {
+                        details = `Alt: ${event.data.altitude}m, Vel: ${event.data.velocity} km/h`;
+                    }
+
+                    html += `
+                        <tr>
+                            <td><strong>${event.callsign}</strong></td>
+                            <td class="${eventClass}">${eventType}</td>
+                            <td>${formattedDate}</td>
+                            <td>${details}</td>
+                        </tr>
+                    `;
+                });
+
+                html += '</tbody></table>';
+                document.getElementById('history').innerHTML = html;
+
+            } catch (error) {
+                document.getElementById('history').innerHTML = `
+                    <p style="color: #dc3545;">❌ Error al cargar el historial</p>
+                `;
+            }
+        }
+
         checkFlights();
+        loadHistory();
     </script>
 </body>
 </html>
@@ -186,6 +299,14 @@ def status():
         "planes_activos": list(active_planes),
         "timestamp": datetime.now().isoformat(),
         "url": "Railway deployment ready"
+    })
+
+@app.route('/api/history')
+def api_history():
+    history = load_history()
+    return jsonify({
+        "total": len(history),
+        "events": history
     })
 
 @app.route('/test-telegram')
