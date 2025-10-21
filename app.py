@@ -20,7 +20,36 @@ PLANES = {
 }
 
 active_planes = set()
+notified_planes = set()
 HISTORY_FILE = "flight_history.json"
+STATE_FILE = "plane_state.json"
+
+ARGENTINA_AIRPORTS = {
+    "SAEZ": {"name": "Ezeiza", "lat": -34.8222, "lon": -58.5358},
+    "SABE": {"name": "Aeroparque", "lat": -34.5592, "lon": -58.4156},
+    "SACO": {"name": "Córdoba", "lat": -31.3233, "lon": -64.2080},
+    "SAZS": {"name": "San Carlos de Bariloche", "lat": -41.1512, "lon": -71.1575},
+    "SAZM": {"name": "Mendoza", "lat": -32.8317, "lon": -68.7929},
+    "SASA": {"name": "Salta", "lat": -24.8560, "lon": -65.4862},
+    "SARF": {"name": "Rosario", "lat": -32.9036, "lon": -60.7850},
+    "SAAV": {"name": "Ushuaia", "lat": -54.8433, "lon": -68.2958},
+}
+
+def load_state():
+    global notified_planes
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, 'r') as f:
+                notified_planes = set(json.load(f))
+        except:
+            notified_planes = set()
+
+def save_state():
+    try:
+        with open(STATE_FILE, 'w') as f:
+            json.dump(list(notified_planes), f)
+    except Exception as e:
+        print(f"Error guardando estado: {e}")
 
 def load_history():
     if os.path.exists(HISTORY_FILE):
@@ -30,6 +59,38 @@ def load_history():
         except:
             return []
     return []
+
+def calculate_distance(lat1, lon1, lat2, lon2):
+    from math import radians, cos, sin, asin, sqrt
+    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+    c = 2 * asin(sqrt(a))
+    km = 6371 * c
+    return km
+
+def find_nearest_airport(lat, lon):
+    if lat == "N/A" or lon == "N/A":
+        return None
+
+    nearest = None
+    min_distance = float('inf')
+
+    for code, airport in ARGENTINA_AIRPORTS.items():
+        distance = calculate_distance(lat, lon, airport['lat'], airport['lon'])
+        if distance < min_distance:
+            min_distance = distance
+            nearest = {"code": code, "name": airport['name'], "distance": round(distance, 1)}
+
+    return nearest
+
+def calculate_eta(distance_km, speed_kmh):
+    if speed_kmh and speed_kmh != "N/A" and speed_kmh > 0:
+        hours = distance_km / speed_kmh
+        minutes = int(hours * 60)
+        return f"{minutes} min"
+    return "N/A"
 
 def save_flight_event(callsign, event_type, data=None):
     history = load_history()
@@ -138,28 +199,51 @@ def check_flights():
             altitude_unit = "m" if plane_data["source"] == "OpenSky" else "ft"
             velocity_unit = "km/h"
 
-            msg = (f"✈️ {registration} está en vuelo\n"
-                   f"ICAO24: {icao24}\n"
-                   f"Altitud: {plane_data['altitude']} {altitude_unit}\n"
-                   f"Velocidad: {plane_data['velocity']} {velocity_unit}\n"
-                   f"Posición: lat={plane_data['lat']}, lon={plane_data['lon']}\n"
-                   f"Fuente: {plane_data['source']}\n"
-                   f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            nearest = find_nearest_airport(plane_data['lat'], plane_data['lon'])
+
+            is_in_progress = registration in notified_planes
+            event_icon = "🔄" if is_in_progress else "✈️"
+            event_type = "en curso" if is_in_progress else "despegó"
+
+            msg = f"{event_icon} {registration} {event_type}\n"
+            msg += f"ICAO24: {icao24}\n"
+            msg += f"Altitud: {plane_data['altitude']} {altitude_unit}\n"
+            msg += f"Velocidad: {plane_data['velocity']} {velocity_unit}\n"
+
+            if nearest:
+                msg += f"\n📍 Aeropuerto más cercano: {nearest['name']} ({nearest['code']})\n"
+                msg += f"Distancia: {nearest['distance']} km\n"
+
+                eta = calculate_eta(nearest['distance'], plane_data['velocity'])
+                if eta != "N/A":
+                    msg += f"⏱️ ETA aproximado: {eta}\n"
+
+            msg += f"\n📡 Fuente: {plane_data['source']}\n"
+            msg += f"🕐 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+
             notify_telegram(msg)
-            save_flight_event(registration, "takeoff", {
+            notified_planes.add(registration)
+            save_state()
+
+            save_flight_event(registration, "in_progress" if is_in_progress else "takeoff", {
                 "icao24": icao24,
                 "altitude": plane_data["altitude"],
                 "velocity": plane_data["velocity"],
                 "lat": plane_data["lat"],
                 "lon": plane_data["lon"],
-                "source": plane_data["source"]
+                "source": plane_data["source"],
+                "nearest_airport": nearest['name'] if nearest else None
             })
 
     for plane in active_planes - currently_flying:
-        msg = (f"🛬 {plane} ya no está en vuelo\n"
-               f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        msg = (f"🛬 {plane} aterrizó\n"
+               f"🕐 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         notify_telegram(msg)
         save_flight_event(plane, "landing")
+
+        if plane in notified_planes:
+            notified_planes.remove(plane)
+            save_state()
 
     active_planes = currently_flying
     print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Verificación completada. Aviones en vuelo: {len(currently_flying)}")
@@ -384,7 +468,9 @@ def test_telegram():
         }), 500
 
 if __name__ == '__main__':
-    # Iniciar el monitor en un hilo separado
+    load_state()
+    print(f"Estado cargado. Aviones previamente notificados: {notified_planes}")
+
     monitor_thread = threading.Thread(target=monitor_flights, daemon=True)
     monitor_thread.start()
 

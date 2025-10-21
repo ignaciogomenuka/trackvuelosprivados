@@ -45,7 +45,15 @@ python app.py
 - ✅ Monitoreo automático cada 5 minutos en background
 - ✅ **Multi-fuente: ADSB.one (primario) + OpenSky Network (respaldo)**
 - ✅ Mejor cobertura global, especialmente en Sudamérica
-- ✅ Alertas por Telegram cuando aviones entran/salen del radar
+- ✅ **Notificaciones inteligentes:**
+  - 🔄 Vuelos **en curso** al iniciar el sistema
+  - ✈️ Notificación al **despegar**
+  - 🛬 Notificación al **aterrizar**
+- ✅ **Info contextual en notificaciones:**
+  - 📍 Aeropuerto más cercano (distancia)
+  - ⏱️ ETA aproximado al aeropuerto cercano
+  - 📊 Altitud, velocidad, posición
+- ✅ Persistencia de estado (sobrevive reinicios)
 - ✅ Interface web en `/` para verificación manual
 - ✅ API REST en `/api/check`
 - ✅ Health check en `/status`
