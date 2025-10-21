@@ -43,10 +43,26 @@ python app.py
 ## Funcionalidades
 
 - ✅ Monitoreo automático cada 5 minutos en background
+- ✅ **Multi-fuente: ADSB.one (primario) + OpenSky Network (respaldo)**
+- ✅ Mejor cobertura global, especialmente en Sudamérica
 - ✅ Alertas por Telegram cuando aviones entran/salen del radar
 - ✅ Interface web en `/` para verificación manual
 - ✅ API REST en `/api/check`
 - ✅ Health check en `/status`
+- ✅ Historial de vuelos con tabla
 - ✅ Deploy listo para Railway/Heroku
 
 El sistema funciona 24/7 automáticamente una vez deployado.
+
+## Fuentes de datos
+
+**ADSB.one** (API primaria):
+- Mejor cobertura global
+- Sin autenticación requerida
+- Límite: 1 request/segundo
+- Consulta individual por ICAO24
+
+**OpenSky Network** (respaldo):
+- Se usa si ADSB.one no detecta el avión
+- Cubre todos los aviones en una sola consulta
+- Puede tener cobertura limitada en ciertas regiones

@@ -60,77 +60,111 @@ def notify_telegram(msg):
         except Exception as e:
             print(f"Error enviando mensaje por Telegram: {e}")
 
-def check_flights():
-    global active_planes
+def check_adsb_one(icao24):
+    try:
+        response = requests.get(f"https://api.adsb.one/v2/hex/{icao24}", timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("total", 0) > 0 and data.get("ac"):
+                aircraft = data["ac"][0]
+                return {
+                    "icao24": aircraft.get("hex", "").lower(),
+                    "callsign": aircraft.get("flight", "").strip() or aircraft.get("r", ""),
+                    "altitude": aircraft.get("alt_baro", "N/A"),
+                    "velocity": round(aircraft.get("gs", 0) * 1.852, 1) if aircraft.get("gs") else "N/A",
+                    "country": "N/A",
+                    "lat": aircraft.get("lat", "N/A"),
+                    "lon": aircraft.get("lon", "N/A"),
+                    "source": "ADSB.one"
+                }
+    except Exception as e:
+        print(f"ADSB.one error for {icao24}: {e}")
+    return None
+
+def check_opensky():
+    results = {}
     try:
         response = requests.get("https://opensky-network.org/api/states/all", timeout=30)
-        data = response.json()
-
-        currently_flying = set()
-        planes_info = []
-
-        for state in data.get("states", []):
-            if len(state) < 14:
-                continue
-
-            icao24 = state[0].lower() if state[0] else None
-            callsign = state[1].strip() if state[1] else None
-
-            if icao24 in PLANES:
-                registration = PLANES[icao24]
-                currently_flying.add(registration)
-
-                altitude = state[13] if state[13] is not None else "N/A"
-                velocity = round(state[9] * 3.6, 1) if state[9] is not None else "N/A"
-                lat = state[6] if state[6] is not None else "N/A"
-                lon = state[5] if state[5] is not None else "N/A"
-                country = state[2] if state[2] else "N/A"
-
-                planes_info.append({
-                    "callsign": registration,
-                    "icao24": icao24,
-                    "altitude": altitude,
-                    "velocity": velocity,
-                    "country": country,
-                    "lat": lat,
-                    "lon": lon
-                })
-
-                if registration not in active_planes:
-                    msg = (f"✈️ {registration} está en vuelo\n"
-                           f"Callsign: {callsign}\n"
-                           f"ICAO24: {icao24}\n"
-                           f"Altitud: {altitude} m\n"
-                           f"Velocidad: {velocity} km/h\n"
-                           f"País: {country}\n"
-                           f"Posición: lat={lat}, lon={lon}\n"
-                           f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                    notify_telegram(msg)
-                    save_flight_event(registration, "takeoff", {
+        if response.status_code == 200:
+            data = response.json()
+            for state in data.get("states", []):
+                if len(state) < 14:
+                    continue
+                icao24 = state[0].lower() if state[0] else None
+                if icao24 in PLANES:
+                    results[icao24] = {
                         "icao24": icao24,
-                        "callsign": callsign,
-                        "altitude": altitude,
-                        "velocity": velocity,
-                        "country": country,
-                        "lat": lat,
-                        "lon": lon
-                    })
+                        "callsign": state[1].strip() if state[1] else "",
+                        "altitude": state[13] if state[13] is not None else "N/A",
+                        "velocity": round(state[9] * 3.6, 1) if state[9] is not None else "N/A",
+                        "country": state[2] if state[2] else "N/A",
+                        "lat": state[6] if state[6] is not None else "N/A",
+                        "lon": state[5] if state[5] is not None else "N/A",
+                        "source": "OpenSky"
+                    }
+    except Exception as e:
+        print(f"OpenSky error: {e}")
+    return results
 
-        for plane in active_planes - currently_flying:
-            msg = (f"🛬 {plane} ya no está en vuelo\n"
+def check_flights():
+    global active_planes
+    currently_flying = set()
+    planes_info = []
+
+    print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Checking ADSB.one...")
+    for icao24, registration in PLANES.items():
+        plane_data = check_adsb_one(icao24)
+        if plane_data:
+            currently_flying.add(registration)
+            plane_data["callsign"] = registration
+            planes_info.append(plane_data)
+        time.sleep(1.1)
+
+    print(f"ADSB.one found {len(currently_flying)} planes. Checking OpenSky as backup...")
+    opensky_results = check_opensky()
+
+    for icao24, registration in PLANES.items():
+        if registration not in currently_flying and icao24 in opensky_results:
+            currently_flying.add(registration)
+            plane_data = opensky_results[icao24]
+            plane_data["callsign"] = registration
+            planes_info.append(plane_data)
+
+    for plane_data in planes_info:
+        registration = plane_data["callsign"]
+        icao24 = plane_data["icao24"]
+
+        if registration not in active_planes:
+            altitude_unit = "m" if plane_data["source"] == "OpenSky" else "ft"
+            velocity_unit = "km/h"
+
+            msg = (f"✈️ {registration} está en vuelo\n"
+                   f"ICAO24: {icao24}\n"
+                   f"Altitud: {plane_data['altitude']} {altitude_unit}\n"
+                   f"Velocidad: {plane_data['velocity']} {velocity_unit}\n"
+                   f"Posición: lat={plane_data['lat']}, lon={plane_data['lon']}\n"
+                   f"Fuente: {plane_data['source']}\n"
                    f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             notify_telegram(msg)
-            save_flight_event(plane, "landing")
+            save_flight_event(registration, "takeoff", {
+                "icao24": icao24,
+                "altitude": plane_data["altitude"],
+                "velocity": plane_data["velocity"],
+                "lat": plane_data["lat"],
+                "lon": plane_data["lon"],
+                "source": plane_data["source"]
+            })
 
-        active_planes = currently_flying
+    for plane in active_planes - currently_flying:
+        msg = (f"🛬 {plane} ya no está en vuelo\n"
+               f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        notify_telegram(msg)
+        save_flight_event(plane, "landing")
 
-        print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Verificación completada. Aviones en vuelo: {len(currently_flying)}")
+    active_planes = currently_flying
+    print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Verificación completada. Aviones en vuelo: {len(currently_flying)}")
 
-        return planes_info
-
-    except Exception as e:
-        print(f"Error en la verificación: {e}")
-        return []
+    return planes_info
 
 def monitor_flights():
     while True:
@@ -167,7 +201,7 @@ def index():
 <body>
     <h1>🛩️ Monitor de Vuelos Privados</h1>
     <p>Monitoreo en tiempo real de las matrículas: LV-FVZ, LV-CCO, LV-FUF, LV-KMA, LV-KAX</p>
-    <p style="font-size: 0.85em; color: #666;">Usando códigos ICAO24 Mode-S para detección precisa</p>
+    <p style="font-size: 0.85em; color: #666;">Multi-fuente: ADSB.one + OpenSky Network | Detección vía ICAO24 Mode-S</p>
 
     <div>
         <button onclick="checkFlights()">🔄 Verificar Vuelos</button>
@@ -309,12 +343,13 @@ def api_check():
 def status():
     return jsonify({
         "status": "running",
-        "service": "Flight Monitor v2.0 - ICAO24 Mode",
+        "service": "Flight Monitor v3.0 - Multi-Source",
         "planes_monitoreados": PLANES,
         "planes_activos": list(active_planes),
+        "sources": ["ADSB.one (primary)", "OpenSky Network (backup)"],
         "timestamp": datetime.now().isoformat(),
         "url": "Railway deployment ready",
-        "note": "Using ICAO24 Mode-S codes for accurate tracking"
+        "note": "Multi-source tracking via ADSB.one + OpenSky for better coverage"
     })
 
 @app.route('/api/history')
