@@ -16,6 +16,7 @@ PLANES = {
     "e030cf": "LV-CCO",
     "e06546": "LV-FUF",
     "e0b341": "LV-KMA",
+    "e0b058": "LV-KAX",
 }
 
 active_planes = set()
@@ -165,7 +166,7 @@ def index():
 </head>
 <body>
     <h1>🛩️ Monitor de Vuelos Privados</h1>
-    <p>Monitoreo en tiempo real de las matrículas: LV-FVZ, LV-CCO, LV-FUF, LV-KMA</p>
+    <p>Monitoreo en tiempo real de las matrículas: LV-FVZ, LV-CCO, LV-FUF, LV-KMA, LV-KAX</p>
     <p style="font-size: 0.85em; color: #666;">Usando códigos ICAO24 Mode-S para detección precisa</p>
 
     <div>

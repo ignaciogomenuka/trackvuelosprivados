@@ -7,6 +7,7 @@ Aplicación web que monitorea en tiempo real si alguno de tus aviones registrado
 - LV-FUF
 - LV-KMA
 - LV-CCO
+- LV-KAX
 
 ## Deployment en Railway
 
