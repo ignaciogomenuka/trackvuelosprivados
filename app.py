@@ -4,10 +4,12 @@ import os
 import threading
 import time
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
+
+ARGENTINA_TZ = timezone(timedelta(hours=-3))
 
 app = Flask(__name__)
 
@@ -36,18 +38,24 @@ ARGENTINA_AIRPORTS = {
 }
 
 def load_state():
-    global notified_planes
+    global notified_planes, active_planes
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, 'r') as f:
-                notified_planes = set(json.load(f))
+                state = json.load(f)
+                notified_planes = set(state.get('notified_planes', []))
+                active_planes = set(state.get('active_planes', []))
         except:
             notified_planes = set()
+            active_planes = set()
 
 def save_state():
     try:
         with open(STATE_FILE, 'w') as f:
-            json.dump(list(notified_planes), f)
+            json.dump({
+                'notified_planes': list(notified_planes),
+                'active_planes': list(active_planes)
+            }, f, indent=2)
     except Exception as e:
         print(f"Error guardando estado: {e}")
 
@@ -151,7 +159,7 @@ def save_flight_event(callsign, event_type, data=None):
     event = {
         "callsign": callsign,
         "type": event_type,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(ARGENTINA_TZ).isoformat(),
         "data": data or {}
     }
     history.insert(0, event)
@@ -177,7 +185,9 @@ def notify_telegram(msg):
 
 def check_adsb_one(icao24):
     try:
-        response = requests.get(f"https://api.adsb.one/v2/hex/{icao24}", timeout=10)
+        print(f"  Consultando ADSB.one para {icao24}...")
+        response = requests.get(f"https://api.adsb.one/v2/hex/{icao24}", timeout=5)
+        print(f"  ADSB.one {icao24}: status {response.status_code}")
         if response.status_code == 200:
             data = response.json()
             if data.get("total", 0) > 0 and data.get("ac"):
@@ -202,7 +212,9 @@ def check_adsb_one(icao24):
 def check_opensky():
     results = {}
     try:
+        print(f"Consultando OpenSky Network...")
         response = requests.get("https://opensky-network.org/api/states/all", timeout=30)
+        print(f"OpenSky response: status {response.status_code}")
         if response.status_code == 200:
             data = response.json()
             for state in data.get("states", []):
@@ -235,24 +247,33 @@ def check_flights():
     currently_flying = set()
     planes_info = []
 
-    print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Checking ADSB.one...")
-    for icao24, registration in PLANES.items():
-        plane_data = check_adsb_one(icao24)
-        if plane_data:
-            currently_flying.add(registration)
-            plane_data["callsign"] = registration
-            planes_info.append(plane_data)
-        time.sleep(1.1)
-
-    print(f"ADSB.one found {len(currently_flying)} planes. Checking OpenSky as backup...")
+    # Prioritize OpenSky (single call, more reliable)
+    print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Checking OpenSky Network...")
     opensky_results = check_opensky()
 
     for icao24, registration in PLANES.items():
-        if registration not in currently_flying and icao24 in opensky_results:
+        if icao24 in opensky_results:
             currently_flying.add(registration)
             plane_data = opensky_results[icao24]
             plane_data["callsign"] = registration
             planes_info.append(plane_data)
+            print(f"  Found {registration} via OpenSky")
+
+    # Only check ADSB.one for planes not found in OpenSky
+    if len(currently_flying) < len(PLANES):
+        print(f"OpenSky found {len(currently_flying)}/{len(PLANES)} planes. Checking ADSB.one for missing planes...")
+        for icao24, registration in PLANES.items():
+            if registration not in currently_flying:
+                try:
+                    plane_data = check_adsb_one(icao24)
+                    if plane_data:
+                        currently_flying.add(registration)
+                        plane_data["callsign"] = registration
+                        planes_info.append(plane_data)
+                        print(f"  Found {registration} via ADSB.one")
+                except Exception as e:
+                    print(f"  Error checking {registration} on ADSB.one: {e}")
+                time.sleep(0.5)
 
     for plane_data in planes_info:
         registration = plane_data["callsign"]
@@ -552,9 +573,9 @@ def test_telegram():
 if __name__ == '__main__':
     load_state()
     print(f"Estado cargado. Aviones previamente notificados: {notified_planes}")
-
-    monitor_thread = threading.Thread(target=monitor_flights, daemon=True)
-    monitor_thread.start()
+    print("NOTA: El monitoreo automático está deshabilitado.")
+    print("Use /api/check para verificar vuelos manualmente,")
+    print("o ejecute monitor_vuelos.py en un proceso separado para monitoreo continuo.")
 
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
