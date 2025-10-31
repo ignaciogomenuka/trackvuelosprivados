@@ -40,3 +40,7 @@ Thumbs.db
 
 # Virtual environment (already specified above but adding here for clarity)
 venv/
+
+# Logs and backups
+*.log
+*.backup
