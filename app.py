@@ -570,12 +570,31 @@ def test_telegram():
             "timestamp": datetime.now().isoformat()
         }), 500
 
-if __name__ == '__main__':
-    load_state()
-    print(f"Estado cargado. Aviones previamente notificados: {notified_planes}")
-    print("NOTA: El monitoreo automático está deshabilitado.")
-    print("Use /api/check para verificar vuelos manualmente,")
-    print("o ejecute monitor_vuelos.py en un proceso separado para monitoreo continuo.")
+monitor_started = False
 
+def start_monitor_thread():
+    global monitor_started
+    if not monitor_started:
+        monitor_thread = threading.Thread(target=monitor_flights, daemon=True)
+        monitor_thread.start()
+        monitor_started = True
+        print("✅ Monitor automático iniciado en thread background")
+        print("📊 Verificando vuelos cada 5 minutos")
+        return monitor_thread
+    return None
+
+load_state()
+print(f"Estado cargado. Aviones previamente notificados: {notified_planes}")
+
+enable_monitor = os.getenv('ENABLE_MONITOR', 'false').lower() == 'true'
+
+if enable_monitor:
+    print("🚀 Iniciando monitor automático...")
+    start_monitor_thread()
+else:
+    print("⚠️ Monitor automático deshabilitado")
+    print("Configure ENABLE_MONITOR=true para activar")
+
+if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
