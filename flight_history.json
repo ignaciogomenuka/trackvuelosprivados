@@ -1,0 +1,56 @@
+[
+  {
+    "callsign": "LV-KAX",
+    "type": "landing",
+    "timestamp": "2025-10-23T15:48:56.047299-03:00",
+    "data": {}
+  },
+  {
+    "callsign": "LV-KAX",
+    "type": "takeoff",
+    "timestamp": "2025-10-23T13:40:41.284656-03:00",
+    "data": {
+      "icao24": "e0b058",
+      "altitude": 14257.02,
+      "velocity": 898.2,
+      "lat": -26.21,
+      "lon": -57.5353,
+      "source": "OpenSky",
+      "nearest_airport": "Rosario"
+    }
+  },
+  {
+    "callsign": "LV-FUF",
+    "type": "landing",
+    "timestamp": "2025-10-23T15:19:29.163533",
+    "data": {}
+  },
+  {
+    "callsign": "LV-FUF",
+    "type": "takeoff",
+    "timestamp": "2025-10-23T00:42:04.325263",
+    "data": {
+      "icao24": "e06546",
+      "altitude": 3200.4,
+      "velocity": 650.8,
+      "lat": -34.5334,
+      "lon": -57.6429,
+      "source": "OpenSky",
+      "nearest_airport": "Aeroparque"
+    }
+  },
+  {
+    "callsign": "LV-FUF",
+    "type": "takeoff",
+    "timestamp": "2025-10-23T00:37:08.962695",
+    "data": {
+      "icao24": "e06546",
+      "altitude": 10025,
+      "velocity": 651.3,
+      "lat": -34.806736,
+      "lon": -57.188301,
+      "source": "ADSB.one",
+      "nearest_airport": "Aeroparque"
+    }
+  }
+]
